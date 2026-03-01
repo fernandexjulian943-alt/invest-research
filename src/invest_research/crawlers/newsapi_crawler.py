@@ -35,7 +35,7 @@ class NewsAPICrawler(BaseCrawler):
         api = NewsApiClient(api_key=self.settings.newsapi_api_key)
         query = " OR ".join(keywords[:5])
 
-        kwargs = {"q": query, "language": "zh", "sort_by": "publishedAt", "page_size": 50}
+        kwargs = {"q": query, "sort_by": "publishedAt", "page_size": 50}
         if start_date:
             kwargs["from_param"] = start_date.strftime("%Y-%m-%d")
         if end_date:

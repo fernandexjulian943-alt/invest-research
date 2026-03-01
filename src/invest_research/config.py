@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     anthropic_api_key: str = ""
+    anthropic_base_url: str = ""
     newsapi_api_key: str = ""
+    tavily_api_key: str = ""
 
     # Claude 模型配置
     claude_model_heavy: str = "claude-opus-4-6"
@@ -21,7 +23,10 @@ class Settings(BaseSettings):
     crawl_random_delay_max: float = 5.0
     newsapi_daily_limit: int = 100
 
-    # 调度配置
+    # 调度配置（统一周任务）
+    schedule_weekly_day: str = "sat"
+    schedule_weekly_hour: int = 8
+    # 旧配置保留向后兼容（不再使用）
     schedule_crawl_day: str = "sun"
     schedule_crawl_hour: int = 20
     schedule_report_day: str = "mon"

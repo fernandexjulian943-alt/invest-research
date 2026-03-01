@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 class ClaudeClient:
     def __init__(self, settings=None):
         self.settings = settings or get_settings()
-        self.client = anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
+        kwargs = {"api_key": self.settings.anthropic_api_key}
+        if self.settings.anthropic_base_url:
+            kwargs["base_url"] = self.settings.anthropic_base_url
+        self.client = anthropic.Anthropic(**kwargs)
 
     def _load_prompt(self, prompt_name: str) -> str:
         prompt_path = self.settings.prompts_dir / f"{prompt_name}.md"
@@ -87,14 +90,18 @@ class ClaudeClient:
 
     @staticmethod
     def _extract_json(text: str) -> str:
+        # 尝试提取 ```json ... ``` 块
         if "```json" in text:
             start = text.index("```json") + len("```json")
-            end = text.index("```", start)
-            return text[start:end].strip()
+            end = text.find("```", start)
+            if end != -1:
+                return text[start:end].strip()
+        # 尝试提取 ``` ... ``` 块
         if "```" in text:
             start = text.index("```") + 3
-            end = text.index("```", start)
-            return text[start:end].strip()
+            end = text.find("```", start)
+            if end != -1:
+                return text[start:end].strip()
         # 尝试直接找 JSON 对象
         start = text.find("{")
         end = text.rfind("}") + 1

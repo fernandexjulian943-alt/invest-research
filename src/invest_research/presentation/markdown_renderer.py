@@ -88,6 +88,38 @@ def render_report(
             "",
         ])
 
+    # 与上期报告对比
+    if report.changes_from_previous:
+        lines.extend([
+            "---",
+            "",
+            "## 与上期报告对比",
+            "",
+            report.changes_from_previous,
+            "",
+        ])
+
+    # 参考新闻链接（汇总所有风险和机会的支撑新闻，去重后列出）
+    seen_urls = set()
+    all_news = []
+    for risk in report.risks:
+        for news in risk.supporting_news:
+            if news.url and news.url not in seen_urls:
+                seen_urls.add(news.url)
+                all_news.append(news)
+    for opp in report.opportunities:
+        for news in opp.supporting_news:
+            if news.url and news.url not in seen_urls:
+                seen_urls.add(news.url)
+                all_news.append(news)
+
+    if all_news:
+        lines.extend(["---", "", "## 参考新闻链接", ""])
+        for i, news in enumerate(all_news, 1):
+            lines.append(f"{i}. {news.title}")
+            lines.append(f"   {news.url}")
+        lines.append("")
+
     # 尾注
     lines.extend([
         "---",

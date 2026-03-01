@@ -1,20 +1,26 @@
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from difflib import SequenceMatcher
 
 from invest_research.config import get_settings
 from invest_research.crawlers.akshare_crawler import AKShareCrawler
+from invest_research.crawlers.base import BaseCrawler
 from invest_research.crawlers.cls_crawler import CLSCrawler
+from invest_research.crawlers.content_extractor import extract_content
+from invest_research.crawlers.ddg_crawler import DdgCrawler
 from invest_research.crawlers.newsapi_crawler import NewsAPICrawler
 from invest_research.crawlers.rss_crawler import RSSCrawler
-from invest_research.crawlers.base import BaseCrawler
+from invest_research.crawlers.tavily_crawler import TavilyCrawler
 from invest_research.data.news_repo import NewsRepo
 from invest_research.models import AnalysisFramework, NewsArticle
 
 logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_FAILURES = 3
+MIN_SNIPPET_LENGTH = 50
+MAX_EXTRACT_ARTICLES = 20
 
 
 class CrawlService:
@@ -28,12 +34,15 @@ class CrawlService:
         framework: AnalysisFramework,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        on_source_complete: Callable[[str, list[NewsArticle]], None] | None = None,
     ) -> int:
         crawlers: list[BaseCrawler] = [
             AKShareCrawler(),
             NewsAPICrawler(),
             RSSCrawler(),
             CLSCrawler(),
+            DdgCrawler(),
+            TavilyCrawler(),
         ]
 
         all_articles: list[NewsArticle] = []
@@ -60,12 +69,17 @@ class CrawlService:
                     all_articles.extend(articles)
                     self._reset_failure(source)
                     logger.info(f"{source} 返回 {len(articles)} 条新闻")
+                    if on_source_complete and articles:
+                        on_source_complete(source, articles)
                 except Exception as e:
                     self._record_failure(source)
                     logger.error(f"{source} 爬取失败: {e}")
 
         # 去重
         deduplicated = self._deduplicate(all_articles)
+
+        # 用 trafilatura 补充空 snippet
+        self._fill_empty_snippets(deduplicated)
 
         # 存储
         inserted_count = 0
@@ -100,6 +114,27 @@ class CrawlService:
             result.append(article)
 
         return result
+
+    def _fill_empty_snippets(self, articles: list[NewsArticle]) -> None:
+        targets = [a for a in articles if len(a.content_snippet.strip()) < MIN_SNIPPET_LENGTH]
+        targets = targets[:MAX_EXTRACT_ARTICLES]
+        if not targets:
+            return
+
+        logger.info(f"使用 trafilatura 补充 {len(targets)} 篇文章的正文摘要")
+
+        def _extract(article: NewsArticle) -> tuple[NewsArticle, str]:
+            return article, extract_content(article.url)
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(_extract, a) for a in targets]
+            for future in as_completed(futures):
+                try:
+                    article, content = future.result()
+                    if content:
+                        article.content_snippet = content
+                except Exception as e:
+                    logger.debug(f"正文提取失败: {e}")
 
     def _is_circuit_broken(self, source: str) -> bool:
         return self._failure_counts.get(source, 0) >= MAX_CONSECUTIVE_FAILURES

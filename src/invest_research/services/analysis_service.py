@@ -22,10 +22,17 @@ class AnalysisService:
         self,
         framework: AnalysisFramework,
         week_end: datetime | None = None,
+        financial_context: str = "",
     ) -> WeeklyAnalysis:
         if week_end is None:
             week_end = datetime.now()
-        week_start = week_end - timedelta(days=7)
+
+        # 增量: 非首次分析时从上次分析结束时间开始
+        previous_analysis = self.analysis_repo.get_latest(framework.id)
+        if previous_analysis:
+            week_start = previous_analysis.week_end
+        else:
+            week_start = week_end - timedelta(days=7)
 
         # 获取本周新闻
         articles = self.news_repo.get_by_framework(
@@ -45,16 +52,16 @@ class AnalysisService:
         # 构建历史摘要上下文
         historical_context = self._build_historical_context(framework.id)
 
-        # 构建新闻列表
-        news_list = []
+        # 构建新闻列表（纯文本格式，避免 AI 输出时混淆引号）
+        news_text_lines = []
         for i, article in enumerate(articles):
-            news_list.append({
-                "id": i + 1,
-                "title": article.title,
-                "source": article.source,
-                "snippet": article.content_snippet[:200],
-                "date": article.published_at.strftime("%Y-%m-%d") if article.published_at else "",
-            })
+            date_str = article.published_at.strftime("%Y-%m-%d") if article.published_at else "未知"
+            snippet = article.content_snippet[:100].replace("\n", " ")
+            news_text_lines.append(
+                f"[{i + 1}] {article.title} | 来源: {article.source} | 日期: {date_str}"
+                f" | URL: {article.url} | 摘要: {snippet}"
+            )
+        news_text = "\n".join(news_text_lines)
 
         # 构建消息
         framework_context = (
@@ -65,20 +72,27 @@ class AnalysisService:
             f"宏观因素: {', '.join(framework.macro_factors)}\n"
         )
 
+        financial_section = f"## 财务数据\n{financial_context}\n\n" if financial_context else ""
+
         user_message = (
             f"## 分析框架\n{framework_context}\n\n"
             f"## 历史摘要\n{historical_context}\n\n"
-            f"## 本周新闻 ({len(news_list)} 条)\n"
-            f"```json\n{json.dumps(news_list, ensure_ascii=False, indent=2)}\n```\n\n"
-            f"请对每条新闻进行分析，并生成周度总结。"
+            f"{financial_section}"
+            f"## 本周新闻 ({len(articles)} 条)\n{news_text}\n\n"
+            f"请对每条新闻进行分析，并生成周度总结。注意输出的 JSON 中所有字符串值内的双引号必须用反斜杠转义。"
         )
 
         messages = [{"role": "user", "content": user_message}]
+
+        # 根据新闻条数动态计算 max_tokens，避免输出截断导致 JSON 解析失败
+        estimated_tokens = 1024 + len(articles) * 300
+        max_tokens = max(8192, min(estimated_tokens, 16384))
 
         response = self.claude.chat(
             messages=messages,
             prompt_name="news_analyst",
             model=self.settings.claude_model_light,
+            max_tokens=max_tokens,
         )
 
         analysis = self._parse_analysis(response, framework.id, week_start, week_end)
@@ -128,11 +142,48 @@ class AnalysisService:
                 weekly_summary=data.get("weekly_summary", ""),
             )
         except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"分析结果解析失败: {e}")
-            return WeeklyAnalysis(
-                framework_id=framework_id,
-                week_start=week_start,
-                week_end=week_end,
-                news_analyses=[],
-                weekly_summary=f"分析结果解析失败: {response[:200]}",
-            )
+            logger.warning(f"JSON 解析失败，尝试修复: {e}")
+            # 尝试修复截断的 JSON
+            json_str = ClaudeClient._extract_json(response)
+            repaired = AnalysisService._repair_json(json_str)
+            try:
+                data = json.loads(repaired)
+                news_analyses = [
+                    NewsAnalysisItem(**item) for item in data.get("news_analyses", [])
+                ]
+                return WeeklyAnalysis(
+                    framework_id=framework_id,
+                    week_start=week_start,
+                    week_end=week_end,
+                    news_analyses=news_analyses,
+                    weekly_summary=data.get("weekly_summary", ""),
+                )
+            except Exception:
+                logger.error(f"JSON 修复失败，返回空分析")
+                return WeeklyAnalysis(
+                    framework_id=framework_id,
+                    week_start=week_start,
+                    week_end=week_end,
+                    news_analyses=[],
+                    weekly_summary=f"分析结果解析失败",
+                )
+
+    @staticmethod
+    def _repair_json(text: str) -> str:
+        """尝试修复截断或格式错误的 JSON。"""
+        # 平衡括号
+        open_braces = text.count("{") - text.count("}")
+        open_brackets = text.count("[") - text.count("]")
+
+        # 如果在字符串中间截断，先关闭字符串
+        if text.rstrip().endswith(("\\", ",")):
+            text = text.rstrip().rstrip(",").rstrip("\\")
+
+        # 尝试关闭未完成的字符串
+        quote_count = text.count('"') - text.count('\\"')
+        if quote_count % 2 != 0:
+            text += '"'
+
+        text += "]" * max(0, open_brackets)
+        text += "}" * max(0, open_braces)
+        return text

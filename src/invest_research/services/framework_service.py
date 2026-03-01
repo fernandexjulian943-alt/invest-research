@@ -63,6 +63,21 @@ class FrameworkService:
 
             messages.append({"role": "user", "content": user_reply})
 
+    def build_framework_auto(self, company_name: str) -> AnalysisFramework:
+        """一次性自动生成分析框架，无需多轮对话。"""
+        messages = [
+            {"role": "user", "content": f"请为 {company_name} 生成投资分析框架。"}
+        ]
+        response = self.claude.chat(
+            messages=messages,
+            prompt_name="framework_builder_auto",
+            model=self.claude.settings.claude_model_light,
+        )
+        framework = self._parse_framework(response)
+        if framework:
+            return framework
+        raise ValueError(f"无法为 {company_name} 自动生成分析框架")
+
     @staticmethod
     def _parse_framework(text: str) -> AnalysisFramework | None:
         try:

@@ -134,7 +134,8 @@ def generate_report(framework_id: int):
         claude = ClaudeClient()
         analysis_repo = AnalysisRepo(conn)
         report_repo = ReportRepo(conn)
-        report_service = ReportService(claude, analysis_repo, report_repo)
+        news_repo = NewsRepo(conn)
+        report_service = ReportService(claude, analysis_repo, report_repo, news_repo)
 
         cli_ui.display_info(f"开始为 [{framework.company_name}] 生成投资报告...")
         report = report_service.generate_report(framework)
@@ -146,7 +147,7 @@ def generate_report(framework_id: int):
 
 @cli.command("schedule-start")
 def schedule_start():
-    """启动定时任务"""
+    """启动定时任务（独立模式）"""
     from invest_research.scheduler.jobs import create_scheduler
 
     settings = get_settings()
@@ -154,8 +155,7 @@ def schedule_start():
     scheduler.start()
 
     cli_ui.display_info("定时任务已启动:")
-    cli_ui.display_info(f"  - 爬取: 每周{settings.schedule_crawl_day} {settings.schedule_crawl_hour}:00")
-    cli_ui.display_info(f"  - 报告: 每周{settings.schedule_report_day} {settings.schedule_report_hour}:00")
+    cli_ui.display_info(f"  - 每周投研: 每周{settings.schedule_weekly_day} {settings.schedule_weekly_hour}:00")
     cli_ui.display_info("按 Ctrl+C 停止...")
 
     def handle_signal(signum, frame):
@@ -168,6 +168,34 @@ def schedule_start():
 
     while True:
         time.sleep(1)
+
+
+@cli.command("serve")
+@click.option("--host", default="0.0.0.0", help="监听地址")
+@click.option("--port", default=8001, type=int, help="监听端口")
+def serve(host: str, port: int):
+    """启动 Web 服务（含定时投研调度）"""
+    import uvicorn
+    from invest_research.presentation.web import create_app
+    from invest_research.scheduler.jobs import create_scheduler
+
+    settings = get_settings()
+    init_db()
+
+    scheduler = create_scheduler()
+    scheduler.start()
+
+    next_run = scheduler.get_job("weekly_research").next_run_time
+    cli_ui.display_info(
+        f"定时投研已启动: 每周{settings.schedule_weekly_day} "
+        f"{settings.schedule_weekly_hour}:00，下次执行: {next_run}"
+    )
+    cli_ui.display_info(f"Web 服务启动: http://{host}:{port}")
+
+    try:
+        uvicorn.run(create_app(), host=host, port=port, log_level="info")
+    finally:
+        scheduler.shutdown()
 
 
 if __name__ == "__main__":

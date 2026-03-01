@@ -15,8 +15,8 @@ class FrameworkRepo:
             INSERT INTO frameworks (
                 company_name, stock_code, industry, sub_industry,
                 business_description, keywords, competitors,
-                macro_factors, monitoring_indicators, rss_feeds
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                macro_factors, monitoring_indicators, rss_feeds, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 framework.company_name,
@@ -29,6 +29,7 @@ class FrameworkRepo:
                 json.dumps(framework.macro_factors, ensure_ascii=False),
                 json.dumps(framework.monitoring_indicators, ensure_ascii=False),
                 json.dumps(framework.rss_feeds, ensure_ascii=False),
+                1 if framework.is_active else 0,
             ),
         )
         self.conn.commit()
@@ -52,7 +53,7 @@ class FrameworkRepo:
                 company_name=?, stock_code=?, industry=?, sub_industry=?,
                 business_description=?, keywords=?, competitors=?,
                 macro_factors=?, monitoring_indicators=?, rss_feeds=?,
-                updated_at=?
+                is_active=?, updated_at=?
             WHERE id=?
             """,
             (
@@ -66,6 +67,7 @@ class FrameworkRepo:
                 json.dumps(framework.macro_factors, ensure_ascii=False),
                 json.dumps(framework.monitoring_indicators, ensure_ascii=False),
                 json.dumps(framework.rss_feeds, ensure_ascii=False),
+                1 if framework.is_active else 0,
                 datetime.now().isoformat(),
                 framework.id,
             ),
@@ -78,6 +80,7 @@ class FrameworkRepo:
 
     @staticmethod
     def _row_to_model(row: sqlite3.Row) -> AnalysisFramework:
+        is_active_val = row["is_active"] if "is_active" in row.keys() else 1
         return AnalysisFramework(
             id=row["id"],
             company_name=row["company_name"],
@@ -90,6 +93,7 @@ class FrameworkRepo:
             macro_factors=json.loads(row["macro_factors"]),
             monitoring_indicators=json.loads(row["monitoring_indicators"]),
             rss_feeds=json.loads(row["rss_feeds"]),
+            is_active=bool(is_active_val),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

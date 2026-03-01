@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 投研分析系统</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #242734;
+  --border: #2e3142;
+  --text: #e4e6f0;
+  --text2: #8b8fa3;
+  --accent: #6366f1;
+  --accent2: #818cf8;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --orange: #f97316;
+  --red: #ef4444;
+  --radius: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* Header */
+.header { padding:20px 32px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
+.header h1 { font-size:20px; font-weight:600; }
+.header .subtitle { color:var(--text2); font-size:14px; }
+
+/* Tabs */
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); padding:0 32px; }
+.tab { padding:12px 24px; cursor:pointer; color:var(--text2); font-size:14px; font-weight:500; border-bottom:2px solid transparent; transition:all .2s; }
+.tab:hover { color:var(--text); }
+.tab.active { color:var(--accent2); border-bottom-color:var(--accent); }
+
+/* Panels */
+.panel { display:none; padding:24px 32px; }
+.panel.active { display:block; }
+
+/* Reports - horizontal scroll company columns */
+.reports-container { display:flex; gap:20px; overflow-x:auto; padding-bottom:16px; min-height:400px; }
+.company-column { min-width:320px; max-width:360px; flex-shrink:0; background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); }
+.company-header { padding:16px; border-bottom:1px solid var(--border); }
+.company-name { font-size:16px; font-weight:600; margin-bottom:4px; }
+.company-industry { font-size:12px; color:var(--text2); background:var(--surface2); display:inline-block; padding:2px 8px; border-radius:4px; }
+.report-cards { padding:8px; display:flex; flex-direction:column; gap:8px; max-height:600px; overflow-y:auto; }
+.report-card { padding:12px; background:var(--surface2); border-radius:6px; cursor:pointer; transition:all .2s; border:1px solid transparent; }
+.report-card:hover { border-color:var(--accent); }
+.report-card-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.report-date { font-size:12px; color:var(--text2); }
+.rating-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; }
+.rating-strong-buy { background:#166534; color:#86efac; }
+.rating-buy { background:#14532d; color:#86efac; }
+.rating-neutral { background:#854d0e; color:#fde047; }
+.rating-cautious { background:#9a3412; color:#fdba74; }
+.rating-avoid { background:#991b1b; color:#fca5a5; }
+.report-summary { font-size:13px; color:var(--text2); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+
+/* Report detail modal */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100; justify-content:center; align-items:start; padding:40px 20px; overflow-y:auto; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; max-width:800px; width:100%; padding:32px; position:relative; }
+.modal-close { position:absolute; top:16px; right:16px; background:none; border:none; color:var(--text2); font-size:24px; cursor:pointer; }
+.modal-close:hover { color:var(--text); }
+.modal h2 { font-size:20px; margin-bottom:16px; }
+.modal h3 { font-size:16px; margin:20px 0 10px; color:var(--accent2); }
+.modal .meta { color:var(--text2); font-size:13px; margin-bottom:8px; }
+.modal p { line-height:1.7; font-size:14px; color:var(--text); margin-bottom:8px; }
+.modal table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; }
+.modal th { text-align:left; padding:8px; border-bottom:1px solid var(--border); color:var(--text2); font-weight:500; }
+.modal td { padding:8px; border-bottom:1px solid var(--border); }
+
+/* New research form */
+.research-form { max-width:500px; }
+.form-group { margin-bottom:20px; }
+.form-group label { display:block; font-size:14px; font-weight:500; margin-bottom:8px; }
+.form-group input[type=text] { width:100%; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:14px; outline:none; }
+.form-group input[type=text]:focus { border-color:var(--accent); }
+.toggle-row { display:flex; align-items:center; gap:12px; }
+.toggle { width:44px; height:24px; background:var(--border); border-radius:12px; cursor:pointer; position:relative; transition:background .2s; }
+.toggle.on { background:var(--accent); }
+.toggle::after { content:''; position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition:transform .2s; }
+.toggle.on::after { transform:translateX(20px); }
+.toggle-label { font-size:14px; color:var(--text2); }
+.btn { padding:10px 24px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:14px; font-weight:500; cursor:pointer; transition:opacity .2s; }
+.btn:hover { opacity:0.9; }
+.btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* Progress */
+.progress-area { display:none; margin-top:32px; max-width:500px; }
+.progress-area.active { display:block; }
+.steps { display:flex; flex-direction:column; gap:0; }
+.step { display:flex; align-items:flex-start; gap:12px; padding:12px 0; position:relative; }
+.step-dot { width:28px; height:28px; border-radius:50%; background:var(--surface2); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px; transition:all .3s; }
+.step.active .step-dot { border-color:var(--accent); background:var(--accent); }
+.step.done .step-dot { border-color:var(--green); background:var(--green); }
+.step.error .step-dot { border-color:var(--red); background:var(--red); }
+.step-line { position:absolute; left:13px; top:40px; width:2px; height:calc(100% - 28px); background:var(--border); }
+.step:last-child .step-line { display:none; }
+.step.done .step-line { background:var(--green); }
+.step-content { flex:1; }
+.step-title { font-size:14px; font-weight:500; }
+.step-msg { font-size:12px; color:var(--text2); margin-top:2px; }
+.step .spinner { width:14px; height:14px; border:2px solid transparent; border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.result-link { display:inline-block; margin-top:16px; padding:10px 20px; background:var(--green); color:#fff; border-radius:var(--radius); text-decoration:none; font-size:14px; font-weight:500; }
+.result-link:hover { opacity:0.9; }
+
+.empty-state { text-align:center; padding:80px 20px; color:var(--text2); }
+.empty-state p { font-size:14px; }
+
+/* Crawl news list */
+.news-list { max-height:200px; overflow-y:auto; margin-top:8px; border:1px solid var(--border); border-radius:6px; background:var(--surface); }
+.news-list-item { display:flex; align-items:baseline; gap:8px; padding:6px 10px; border-bottom:1px solid var(--border); font-size:12px; line-height:1.4; }
+.news-list-item:last-child { border-bottom:none; }
+.news-source-tag { flex-shrink:0; font-size:10px; font-weight:600; padding:1px 6px; border-radius:3px; background:var(--accent); color:#fff; white-space:nowrap; }
+.news-list-item a { color:var(--accent2); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.news-list-item a:hover { text-decoration:underline; }
+.news-count-badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:10px; background:var(--accent); color:#fff; margin-left:8px; vertical-align:middle; }
+
+/* Frameworks dual-column layout */
+.frameworks-layout { display:flex; gap:20px; min-height:400px; }
+.stock-list-panel { flex:2; overflow-x:auto; }
+.financial-panel { flex:3; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; overflow-y:auto; max-height:600px; }
+.stock-row { cursor:pointer; transition:background .2s; }
+.stock-row:hover { background:var(--surface2); }
+.stock-row.selected { background:var(--surface2); border-left:3px solid var(--accent); }
+.financial-panel h3 { font-size:16px; font-weight:600; margin-bottom:12px; color:var(--accent2); }
+.financial-pre { white-space:pre-wrap; font-size:13px; color:var(--text); line-height:1.6; font-family:monospace; }
+
+/* Stock Data Query Tab */
+.query-cards { display:flex; flex-direction:column; gap:24px; max-width:900px; }
+.query-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+.query-card h3 { font-size:16px; font-weight:600; margin-bottom:16px; color:var(--accent2); }
+.query-form { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+.query-field { display:flex; flex-direction:column; gap:4px; }
+.query-field label { font-size:12px; color:var(--text2); }
+.query-field input, .query-field select { padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; outline:none; }
+.query-field input:focus, .query-field select:focus { border-color:var(--accent); }
+.query-btn { padding:8px 20px; background:var(--accent); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; height:35px; align-self:end; }
+.query-btn:hover { opacity:0.9; }
+.query-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.query-result { margin-top:16px; }
+
+/* Quote result */
+.quote-price { font-size:32px; font-weight:700; margin:8px 0; }
+.quote-price.up { color:var(--green); }
+.quote-price.down { color:var(--red); }
+.quote-change { font-size:14px; margin-bottom:16px; }
+.quote-change.up { color:var(--green); }
+.quote-change.down { color:var(--red); }
+.quote-name { font-size:14px; color:var(--text2); margin-bottom:4px; }
+.quote-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; }
+.quote-grid-item { background:var(--surface2); padding:10px 14px; border-radius:6px; }
+.quote-grid-label { font-size:11px; color:var(--text2); margin-bottom:2px; }
+.quote-grid-value { font-size:14px; font-weight:500; }
+
+/* History table */
+.history-table-wrap { max-height:400px; overflow:auto; border:1px solid var(--border); border-radius:6px; }
+.history-table { width:100%; border-collapse:collapse; font-size:13px; }
+.history-table th { position:sticky; top:0; background:var(--surface2); text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text2); font-weight:500; white-space:nowrap; }
+.history-table td { padding:7px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.history-table tr:hover { background:var(--surface2); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>AI 投研分析系统</h1>
+  <span class="subtitle">智能投资研究助手</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="reports">历史报告</div>
+  <div class="tab" data-tab="research">新建研究</div>
+  <div class="tab" data-tab="frameworks">关注股票管理</div>
+  <div class="tab" data-tab="stockquery">股票数据查询</div>
+</div>
+
+<!-- Tab 1: Reports -->
+<div class="panel active" id="panel-reports">
+  <div class="reports-container" id="reports-container">
+    <div class="empty-state" id="reports-empty"><p>暂无报告数据</p></div>
+  </div>
+</div>
+
+<!-- Tab 2: New Research -->
+<div class="panel" id="panel-research">
+  <div class="research-form">
+    <div class="form-group">
+      <label>公司名称</label>
+      <input type="text" id="company-input" placeholder="例如：宁德时代、腾讯、拼多多">
+    </div>
+    <div class="form-group">
+      <div class="toggle-row">
+        <div class="toggle" id="weekly-toggle"></div>
+        <span class="toggle-label">加入每周自动分析</span>
+      </div>
+    </div>
+    <button class="btn" id="start-btn">开始研究</button>
+  </div>
+  <div class="progress-area" id="progress-area">
+    <div class="steps">
+      <div class="step" id="step-build_framework">
+        <div class="step-dot">1</div>
+        <div class="step-line"></div>
+        <div class="step-content">
+          <div class="step-title">构建框架</div>
+          <div class="step-msg"></div>
+        </div>
+      </div>
+      <div class="step" id="step-crawl_news">
+        <div class="step-dot">2</div>
+        <div class="step-line"></div>
+        <div class="step-content">
+          <div class="step-title">爬取新闻<span id="crawl-news-badge" class="news-count-badge" style="display:none"></span></div>
+          <div class="step-msg"></div>
+          <div id="crawl-news-list"></div>
+        </div>
+      </div>
+      <div class="step" id="step-analyze">
+        <div class="step-dot">3</div>
+        <div class="step-line"></div>
+        <div class="step-content">
+          <div class="step-title">AI 分析</div>
+          <div class="step-msg"></div>
+        </div>
+      </div>
+      <div class="step" id="step-generate_report">
+        <div class="step-dot">4</div>
+        <div class="step-line"></div>
+        <div class="step-content">
+          <div class="step-title">生成报告</div>
+          <div class="step-msg"></div>
+        </div>
+      </div>
+    </div>
+    <div id="result-area"></div>
+  </div>
+</div>
+
+<!-- Tab 3: Stock Management -->
+<div class="panel" id="panel-frameworks">
+  <div class="frameworks-layout">
+    <div class="stock-list-panel" id="frameworks-list"></div>
+    <div class="financial-panel" id="financial-panel">
+      <div class="empty-state"><p>点击左侧股票查看财报分析</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab 4: Stock Data Query -->
+<div class="panel" id="panel-stockquery">
+  <div class="query-cards">
+    <!-- 实时报价 -->
+    <div class="query-card">
+      <h3>实时股票报价</h3>
+      <div class="query-form">
+        <div class="query-field">
+          <label>股票代码</label>
+          <input type="text" id="quote-code" placeholder="600519 / MSFT / 00700" style="width:200px;">
+        </div>
+        <button class="query-btn" id="quote-btn" onclick="queryQuote()">查询</button>
+      </div>
+      <div class="query-result" id="quote-result"></div>
+    </div>
+
+    <!-- 历史价格 -->
+    <div class="query-card">
+      <h3>历史价格查询</h3>
+      <div class="query-form">
+        <div class="query-field">
+          <label>股票代码</label>
+          <input type="text" id="history-code" placeholder="600519 / MSFT / 00700" style="width:160px;">
+        </div>
+        <div class="query-field">
+          <label>开始日期</label>
+          <input type="date" id="history-start" style="width:150px;">
+        </div>
+        <div class="query-field">
+          <label>结束日期</label>
+          <input type="date" id="history-end" style="width:150px;">
+        </div>
+        <div class="query-field">
+          <label>周期</label>
+          <select id="history-period">
+            <option value="daily">日线</option>
+            <option value="weekly">周线</option>
+            <option value="monthly">月线</option>
+          </select>
+        </div>
+        <button class="query-btn" id="history-btn" onclick="queryHistory()">查询</button>
+      </div>
+      <div class="query-result" id="history-result"></div>
+    </div>
+
+    <!-- 公司财报 -->
+    <div class="query-card">
+      <h3>公司财报研究</h3>
+      <div class="query-form">
+        <div class="query-field">
+          <label>股票代码</label>
+          <input type="text" id="financial-code" placeholder="600519 / MSFT / 00700" style="width:200px;">
+        </div>
+        <button class="query-btn" id="financial-btn" onclick="queryFinancial()">查询</button>
+      </div>
+      <div class="query-result" id="financial-result"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Report Detail Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" id="modal-close">&times;</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+const RATING_MAP = {
+  '强烈推荐': { cls: 'rating-strong-buy', label: '强烈推荐' },
+  '推荐': { cls: 'rating-buy', label: '推荐' },
+  '中性': { cls: 'rating-neutral', label: '中性' },
+  '谨慎': { cls: 'rating-cautious', label: '谨慎' },
+  '回避': { cls: 'rating-avoid', label: '回避' },
+};
+
+const SEVERITY_ICON = { '高': '\u{1F534}', '中': '\u{1F7E1}', '低': '\u{1F7E2}' };
+
+// --- Tabs ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'reports') loadReports();
+    if (tab.dataset.tab === 'frameworks') loadFrameworks();
+    if (tab.dataset.tab === 'stockquery') initStockQueryTab();
+  });
+});
+
+// --- Reports ---
+async function loadReports() {
+  const container = document.getElementById('reports-container');
+  try {
+    const res = await fetch('/api/reports');
+    const data = await res.json();
+    if (!data.length) {
+      container.innerHTML = '<div class="empty-state"><p>暂无报告数据</p></div>';
+      return;
+    }
+    container.innerHTML = '';
+    data.forEach(company => {
+      const col = document.createElement('div');
+      col.className = 'company-column';
+      const industryTag = company.industry ? `${company.industry}` + (company.sub_industry ? ` / ${company.sub_industry}` : '') : '';
+      col.innerHTML = `
+        <div class="company-header">
+          <div class="company-name">${esc(company.company_name)}</div>
+          ${industryTag ? `<span class="company-industry">${esc(industryTag)}</span>` : ''}
+        </div>
+        <div class="report-cards">
+          ${company.reports.map(r => {
+            const rm = RATING_MAP[r.investment_rating] || { cls:'rating-neutral', label: r.investment_rating || '未知' };
+            const date = r.report_date ? r.report_date.split('T')[0] : '';
+            return `<div class="report-card" data-id="${r.id}">
+              <div class="report-card-top">
+                <span class="report-date">${esc(date)}</span>
+                <span class="rating-badge ${rm.cls}">${esc(rm.label)}</span>
+              </div>
+              <div class="report-summary">${esc(r.executive_summary || '')}</div>
+            </div>`;
+          }).join('')}
+        </div>`;
+      col.querySelectorAll('.report-card').forEach(card => {
+        card.addEventListener('click', () => openReport(card.dataset.id));
+      });
+      container.appendChild(col);
+    });
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
+  }
+}
+
+async function openReport(id) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  content.innerHTML = '<p>加载中...</p>';
+  overlay.classList.add('open');
+  try {
+    const res = await fetch(`/api/reports/${id}`);
+    const r = await res.json();
+    const rm = RATING_MAP[r.investment_rating] || { cls:'rating-neutral', label: r.investment_rating };
+    let html = `<h2>${esc(r.company_name)} 投资研究报告</h2>`;
+    html += `<div class="meta">${esc(r.report_date?.split('T')[0] || '')} | ${esc(r.industry || '')}</div>`;
+    html += `<p><span class="rating-badge ${rm.cls}">${esc(rm.label)}</span></p>`;
+    if (r.previous_rating) {
+      html += `<p class="meta">上期评级: ${esc(r.previous_rating)}${r.rating_change_reason ? ' | 变动原因: ' + esc(r.rating_change_reason) : ''}</p>`;
+    }
+    html += `<p>${esc(r.rating_rationale)}</p>`;
+    html += `<h3>执行摘要</h3><p>${esc(r.executive_summary)}</p>`;
+
+    if (r.risks && r.risks.length) {
+      html += `<h3>风险评估</h3><table><tr><th>严重程度</th><th>概率</th><th>描述</th><th>影响</th></tr>`;
+      r.risks.forEach(risk => {
+        html += `<tr><td>${SEVERITY_ICON[risk.severity]||''} ${esc(risk.severity)}</td><td>${esc(risk.probability)}</td><td>${esc(risk.description)}</td><td>${esc(risk.impact)}</td></tr>`;
+      });
+      html += '</table>';
+    }
+    if (r.opportunities && r.opportunities.length) {
+      html += `<h3>机会识别</h3><table><tr><th>置信度</th><th>时间框架</th><th>描述</th><th>影响</th></tr>`;
+      r.opportunities.forEach(o => {
+        html += `<tr><td>${esc(o.confidence)}</td><td>${esc(o.timeframe)}</td><td>${esc(o.description)}</td><td>${esc(o.impact)}</td></tr>`;
+      });
+      html += '</table>';
+    }
+    if (r.detailed_analysis) {
+      html += `<h3>详细分析</h3><p>${esc(r.detailed_analysis)}</p>`;
+    }
+    if (r.changes_from_previous) {
+      html += `<h3>与上期报告对比</h3><p>${esc(r.changes_from_previous)}</p>`;
+    }
+
+    // 汇总所有 supporting_news 链接（去重）
+    const seenUrls = new Set();
+    const allNews = [];
+    (r.risks || []).forEach(risk => {
+      (risk.supporting_news || []).forEach(n => {
+        if (n.url && !seenUrls.has(n.url)) {
+          seenUrls.add(n.url);
+          allNews.push(n);
+        }
+      });
+    });
+    (r.opportunities || []).forEach(opp => {
+      (opp.supporting_news || []).forEach(n => {
+        if (n.url && !seenUrls.has(n.url)) {
+          seenUrls.add(n.url);
+          allNews.push(n);
+        }
+      });
+    });
+    if (allNews.length) {
+      html += `<h3>参考新闻链接</h3><ol style="padding-left:20px;">`;
+      allNews.forEach(n => {
+        html += `<li style="margin-bottom:8px;"><span>${esc(n.title)}</span><br><a href="${esc(n.url)}" target="_blank" rel="noopener" style="color:var(--accent2);word-break:break-all;">${esc(n.url)}</a></li>`;
+      });
+      html += `</ol>`;
+    }
+
+    content.innerHTML = html;
+  } catch (e) {
+    content.innerHTML = '<p>加载失败</p>';
+  }
+}
+
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('open');
+});
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+// --- Frameworks ---
+async function loadFrameworks() {
+  const container = document.getElementById('frameworks-list');
+  try {
+    const res = await fetch('/api/frameworks');
+    const data = await res.json();
+    if (!data.length) {
+      container.innerHTML = '<div class="empty-state"><p>暂无关注股票</p></div>';
+      return;
+    }
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
+    html += '<tr><th style="text-align:left;padding:10px;border-bottom:1px solid var(--border);color:var(--text2)">公司</th><th style="text-align:left;padding:10px;border-bottom:1px solid var(--border);color:var(--text2)">股票代码</th><th style="text-align:left;padding:10px;border-bottom:1px solid var(--border);color:var(--text2)">行业</th><th style="text-align:left;padding:10px;border-bottom:1px solid var(--border);color:var(--text2)">状态</th><th style="text-align:left;padding:10px;border-bottom:1px solid var(--border);color:var(--text2)">操作</th></tr>';
+    data.forEach(fw => {
+      html += `<tr class="stock-row" id="fw-row-${fw.id}" onclick="loadFinancialData(${fw.id}, '${esc(fw.company_name)}', '${esc(fw.stock_code || '')}')">
+        <td style="padding:10px;border-bottom:1px solid var(--border)">${esc(fw.company_name)}</td>
+        <td style="padding:10px;border-bottom:1px solid var(--border)">${esc(fw.stock_code || '')}</td>
+        <td style="padding:10px;border-bottom:1px solid var(--border)">${esc(fw.industry || '')} ${esc(fw.sub_industry || '')}</td>
+        <td style="padding:10px;border-bottom:1px solid var(--border)">${fw.is_active ? '<span style="color:var(--green)">活跃</span>' : '<span style="color:var(--text2)">停用</span>'}</td>
+        <td style="padding:10px;border-bottom:1px solid var(--border)">${fw.is_active ? `<button onclick="event.stopPropagation();deactivateFramework(${fw.id})" style="background:var(--red);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">停用</button>` : `<button onclick="event.stopPropagation();activateFramework(${fw.id})" style="background:var(--green);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">启用</button>`}</td>
+      </tr>`;
+    });
+    html += '</table>';
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
+  }
+}
+
+async function loadFinancialData(frameworkId, companyName, stockCode) {
+  const panel = document.getElementById('financial-panel');
+
+  // Highlight selected row
+  document.querySelectorAll('.stock-row').forEach(r => r.classList.remove('selected'));
+  const row = document.getElementById('fw-row-' + frameworkId);
+  if (row) row.classList.add('selected');
+
+  // 右栏显示基本信息 + 获取财报按钮
+  const codeDisplay = stockCode ? ` (${esc(stockCode)})` : '';
+  panel.innerHTML = `
+    <h3>${esc(companyName)}${codeDisplay}</h3>
+    <div style="margin-top:16px;">
+      <button class="btn" id="fetch-financial-btn" onclick="fetchFinancialDetail(${frameworkId})">获取财报分析</button>
+    </div>
+    <div id="financial-detail" style="margin-top:20px;"></div>
+  `;
+}
+
+async function fetchFinancialDetail(frameworkId) {
+  const btn = document.getElementById('fetch-financial-btn');
+  const detail = document.getElementById('financial-detail');
+  if (btn) btn.disabled = true;
+
+  detail.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);"><div class="spinner" style="margin:0 auto 12px;width:24px;height:24px;border:3px solid transparent;border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;"></div><p>正在加载财报数据...</p></div>';
+
+  try {
+    const res = await fetch(`/api/frameworks/${frameworkId}/financial`);
+    if (!res.ok) {
+      detail.innerHTML = `<div class="empty-state"><p>请求失败 (${res.status})</p></div>`;
+      if (btn) btn.disabled = false;
+      return;
+    }
+    const data = await res.json();
+    if (data.summary) {
+      detail.innerHTML = `<pre class="financial-pre">${esc(data.summary)}</pre>`;
+    } else {
+      const errorMsg = data.error || '暂无财报数据';
+      detail.innerHTML = `<div class="empty-state"><p>${esc(errorMsg)}</p></div>`;
+    }
+  } catch (e) {
+    detail.innerHTML = '<div class="empty-state"><p>加载财报数据失败，请检查网络连接</p></div>';
+  }
+  if (btn) btn.disabled = false;
+}
+
+async function deactivateFramework(id) {
+  await fetch(`/api/frameworks/${id}`, { method: 'DELETE' });
+  loadFrameworks();
+}
+
+async function activateFramework(id) {
+  await fetch(`/api/frameworks/${id}/activate`, { method: 'PUT' });
+  loadFrameworks();
+}
+
+// --- Toggle ---
+const toggle = document.getElementById('weekly-toggle');
+let autoWeekly = false;
+toggle.addEventListener('click', () => {
+  autoWeekly = !autoWeekly;
+  toggle.classList.toggle('on', autoWeekly);
+});
+
+// --- Start Research ---
+const STEP_ORDER = ['build_framework', 'crawl_news', 'analyze', 'generate_report'];
+
+document.getElementById('start-btn').addEventListener('click', async () => {
+  const input = document.getElementById('company-input');
+  const name = input.value.trim();
+  if (!name) return;
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  const progressArea = document.getElementById('progress-area');
+  progressArea.classList.add('active');
+  document.getElementById('result-area').innerHTML = '';
+
+  // Reset steps
+  STEP_ORDER.forEach(s => {
+    const el = document.getElementById('step-' + s);
+    el.className = 'step';
+    el.querySelector('.step-msg').textContent = '';
+    el.querySelector('.step-dot').innerHTML = STEP_ORDER.indexOf(s) + 1;
+  });
+  document.getElementById('crawl-news-list').innerHTML = '';
+  const badge = document.getElementById('crawl-news-badge');
+  badge.style.display = 'none';
+  badge.textContent = '';
+
+  try {
+    const res = await fetch('/api/research', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_name: name, auto_weekly: autoWeekly }),
+    });
+    const { task_id } = await res.json();
+    listenSSE(task_id);
+  } catch (e) {
+    btn.disabled = false;
+    progressArea.classList.remove('active');
+  }
+});
+
+function listenSSE(taskId) {
+  const es = new EventSource(`/api/research/${taskId}/events`);
+  let lastStep = null;
+  let crawlNewsCount = 0;
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    const stepEl = document.getElementById('step-' + data.step);
+
+    // Mark previous steps as done
+    if (data.step !== lastStep && lastStep) {
+      const prevEl = document.getElementById('step-' + lastStep);
+      if (prevEl) {
+        prevEl.className = 'step done';
+        prevEl.querySelector('.step-dot').innerHTML = '\u2713';
+      }
+    }
+
+    if (data.step === 'done') {
+      // Mark last real step as done
+      STEP_ORDER.forEach(s => {
+        const el = document.getElementById('step-' + s);
+        el.className = 'step done';
+        el.querySelector('.step-dot').innerHTML = '\u2713';
+      });
+      if (data.report_id) {
+        document.getElementById('result-area').innerHTML =
+          `<a class="result-link" href="#" onclick="openReport(${data.report_id}); return false;">查看报告</a>`;
+      }
+      document.getElementById('start-btn').disabled = false;
+      es.close();
+      return;
+    }
+
+    if (data.step === 'error') {
+      if (lastStep) {
+        const el = document.getElementById('step-' + lastStep);
+        el.className = 'step error';
+        el.querySelector('.step-dot').innerHTML = '\u2717';
+        el.querySelector('.step-msg').textContent = data.message;
+      }
+      document.getElementById('start-btn').disabled = false;
+      es.close();
+      return;
+    }
+
+    // Render crawled articles in real-time
+    if (data.articles && data.articles.length) {
+      const container = document.getElementById('crawl-news-list');
+      if (!container.querySelector('.news-list')) {
+        container.innerHTML = '<div class="news-list"></div>';
+      }
+      const list = container.querySelector('.news-list');
+      data.articles.forEach(article => {
+        const item = document.createElement('div');
+        item.className = 'news-list-item';
+        const tag = document.createElement('span');
+        tag.className = 'news-source-tag';
+        tag.textContent = article.source;
+        const link = document.createElement('a');
+        link.href = article.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = article.title;
+        link.title = article.title;
+        item.appendChild(tag);
+        item.appendChild(link);
+        list.appendChild(item);
+        crawlNewsCount++;
+      });
+      list.scrollTop = list.scrollHeight;
+      const badge = document.getElementById('crawl-news-badge');
+      badge.textContent = crawlNewsCount;
+      badge.style.display = 'inline-block';
+    }
+
+    if (stepEl) {
+      stepEl.className = 'step active';
+      stepEl.querySelector('.step-dot').innerHTML = '<div class="spinner"></div>';
+      stepEl.querySelector('.step-msg').textContent = data.message;
+    }
+    lastStep = data.step;
+  };
+  es.onerror = () => {
+    document.getElementById('start-btn').disabled = false;
+    es.close();
+  };
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Stock Data Query ---
+let stockQueryInited = false;
+
+function initStockQueryTab() {
+  if (stockQueryInited) return;
+  stockQueryInited = true;
+  // 默认历史日期：最近 3 个月
+  const today = new Date();
+  const threeMonthsAgo = new Date(today);
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  document.getElementById('history-end').value = formatDateInput(today);
+  document.getElementById('history-start').value = formatDateInput(threeMonthsAgo);
+}
+
+function formatDateInput(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function formatNumber(n) {
+  if (n === null || n === undefined) return '-';
+  if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(2) + ' 万亿';
+  if (Math.abs(n) >= 1e8) return (n/1e8).toFixed(2) + ' 亿';
+  if (Math.abs(n) >= 1e4) return (n/1e4).toFixed(2) + ' 万';
+  return Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+}
+
+function showLoading(el) {
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);"><div class="spinner" style="margin:0 auto 12px;width:24px;height:24px;border:3px solid transparent;border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;"></div><p>正在查询...</p></div>';
+}
+
+async function queryQuote() {
+  const code = document.getElementById('quote-code').value.trim();
+  if (!code) return;
+  const btn = document.getElementById('quote-btn');
+  const result = document.getElementById('quote-result');
+  btn.disabled = true;
+  showLoading(result);
+  try {
+    const res = await fetch('/api/stock/quote?code=' + encodeURIComponent(code));
+    const data = await res.json();
+    if (data.error) {
+      result.innerHTML = '<div class="empty-state"><p>' + esc(data.error) + '</p></div>';
+    } else {
+      renderQuote(result, data);
+    }
+  } catch (e) {
+    result.innerHTML = '<div class="empty-state"><p>查询失败，请检查网络连接</p></div>';
+  }
+  btn.disabled = false;
+}
+
+function renderQuote(el, d) {
+  const isUp = (d.change || 0) >= 0;
+  const dir = isUp ? 'up' : 'down';
+  const sign = isUp ? '+' : '';
+  const priceStr = d.price != null ? Number(d.price).toFixed(2) : '-';
+  const changeStr = d.change != null ? sign + Number(d.change).toFixed(2) : '-';
+  const changePctStr = d.change_pct != null ? sign + Number(d.change_pct).toFixed(2) + '%' : '-';
+
+  const indicators = [
+    { label: '市盈率(TTM)', value: d.pe_ttm != null ? Number(d.pe_ttm).toFixed(2) : '-' },
+    { label: '市净率', value: d.pb != null ? Number(d.pb).toFixed(2) : '-' },
+    { label: '成交量', value: formatNumber(d.volume) },
+    { label: '成交额', value: formatNumber(d.amount) },
+    { label: '总市值', value: formatNumber(d.market_cap) },
+    { label: '股息率', value: d.dividend_yield != null ? Number(d.dividend_yield).toFixed(2) + '%' : '-' },
+    { label: '今开', value: d.open != null ? Number(d.open).toFixed(2) : '-' },
+    { label: '昨收', value: d.prev_close != null ? Number(d.prev_close).toFixed(2) : '-' },
+    { label: '最高', value: d.high != null ? Number(d.high).toFixed(2) : '-' },
+    { label: '最低', value: d.low != null ? Number(d.low).toFixed(2) : '-' },
+    { label: '52周最高', value: d.week52_high != null ? Number(d.week52_high).toFixed(2) : '-' },
+    { label: '52周最低', value: d.week52_low != null ? Number(d.week52_low).toFixed(2) : '-' },
+  ];
+
+  let html = '';
+  html += '<div class="quote-name">' + esc(d.name) + ' (' + esc(d.code) + ') · ' + esc(d.market) + '股 · ' + esc(d.currency) + '</div>';
+  html += '<div class="quote-price ' + dir + '">' + esc(priceStr) + '</div>';
+  html += '<div class="quote-change ' + dir + '">' + esc(changeStr) + ' (' + esc(changePctStr) + ')</div>';
+  html += '<div class="quote-grid">';
+  indicators.forEach(ind => {
+    html += '<div class="quote-grid-item"><div class="quote-grid-label">' + esc(ind.label) + '</div><div class="quote-grid-value">' + esc(String(ind.value)) + '</div></div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+async function queryHistory() {
+  const code = document.getElementById('history-code').value.trim();
+  const startRaw = document.getElementById('history-start').value;
+  const endRaw = document.getElementById('history-end').value;
+  const period = document.getElementById('history-period').value;
+  if (!code || !startRaw || !endRaw) return;
+
+  const startDate = startRaw.replace(/-/g, '');
+  const endDate = endRaw.replace(/-/g, '');
+
+  const btn = document.getElementById('history-btn');
+  const result = document.getElementById('history-result');
+  btn.disabled = true;
+  showLoading(result);
+
+  try {
+    const url = '/api/stock/history?code=' + encodeURIComponent(code) +
+      '&start_date=' + startDate + '&end_date=' + endDate +
+      '&period=' + period + '&adjust=qfq';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      result.innerHTML = '<div class="empty-state"><p>' + esc(data.error) + '</p></div>';
+    } else if (!data.data || !data.data.length) {
+      result.innerHTML = '<div class="empty-state"><p>未查询到历史数据</p></div>';
+    } else {
+      renderHistory(result, data);
+    }
+  } catch (e) {
+    result.innerHTML = '<div class="empty-state"><p>查询失败，请检查网络连接</p></div>';
+  }
+  btn.disabled = false;
+}
+
+function renderHistory(el, d) {
+  const columns = [
+    { key: 'date', label: '日期' },
+    { key: 'open', label: '开盘' },
+    { key: 'close', label: '收盘' },
+    { key: 'high', label: '最高' },
+    { key: 'low', label: '最低' },
+    { key: 'volume', label: '成交量' },
+    { key: 'change_pct', label: '涨跌幅' },
+    { key: 'turnover', label: '换手率' },
+  ];
+
+  let html = '<div class="history-table-wrap"><table class="history-table"><thead><tr>';
+  columns.forEach(c => { html += '<th>' + esc(c.label) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  // 按日期倒序（最新在前）
+  const rows = d.data.slice().reverse();
+  rows.forEach(row => {
+    html += '<tr>';
+    columns.forEach(c => {
+      let val = row[c.key];
+      if (val === undefined || val === null) val = '-';
+      else if (c.key === 'volume') val = formatNumber(val);
+      else if (c.key === 'change_pct') val = Number(val).toFixed(2) + '%';
+      else if (c.key === 'turnover' && val !== '-') val = Number(val).toFixed(2) + '%';
+      else if (c.key !== 'date' && typeof val === 'number') val = Number(val).toFixed(2);
+      html += '<td>' + esc(String(val)) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div style="margin-top:8px;font-size:12px;color:var(--text2);">共 ' + d.data.length + ' 条记录 · ' + esc(d.market) + '股 · ' + esc(d.period === 'daily' ? '日线' : d.period === 'weekly' ? '周线' : '月线') + '</div>';
+  el.innerHTML = html;
+}
+
+async function queryFinancial() {
+  const code = document.getElementById('financial-code').value.trim();
+  if (!code) return;
+  const btn = document.getElementById('financial-btn');
+  const result = document.getElementById('financial-result');
+  btn.disabled = true;
+  showLoading(result);
+  try {
+    const res = await fetch('/api/stock/financial?code=' + encodeURIComponent(code));
+    const data = await res.json();
+    if (data.summary) {
+      result.innerHTML = '<pre class="financial-pre">' + esc(data.summary) + '</pre>';
+    } else {
+      const errorMsg = data.error || '暂无财报数据';
+      result.innerHTML = '<div class="empty-state"><p>' + esc(errorMsg) + '</p></div>';
+    }
+  } catch (e) {
+    result.innerHTML = '<div class="empty-state"><p>查询失败，请检查网络连接</p></div>';
+  }
+  btn.disabled = false;
+}
+
+// Initial load
+loadReports();
+</script>
+</body>
+</html>

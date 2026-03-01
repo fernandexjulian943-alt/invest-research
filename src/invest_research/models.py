@@ -15,6 +15,7 @@ class AnalysisFramework(BaseModel):
     macro_factors: list[str] = Field(default_factory=list)
     monitoring_indicators: list[str] = Field(default_factory=list)
     rss_feeds: list[str] = Field(default_factory=list)
+    is_active: bool = True
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -51,11 +52,17 @@ class WeeklyAnalysis(BaseModel):
     created_at: datetime | None = None
 
 
+class NewsReference(BaseModel):
+    title: str
+    url: str
+
+
 class RiskItem(BaseModel):
     description: str
     severity: str  # 高/中/低
     probability: str  # 高/中/低
     impact: str = ""
+    supporting_news: list[NewsReference] = Field(default_factory=list)
 
 
 class OpportunityItem(BaseModel):
@@ -63,6 +70,7 @@ class OpportunityItem(BaseModel):
     confidence: str  # 高/中/低
     timeframe: str = ""
     impact: str = ""
+    supporting_news: list[NewsReference] = Field(default_factory=list)
 
 
 class InvestmentReport(BaseModel):
@@ -77,4 +85,5 @@ class InvestmentReport(BaseModel):
     detailed_analysis: str = ""
     previous_rating: str = ""
     rating_change_reason: str = ""
+    changes_from_previous: str = ""
     created_at: datetime | None = None

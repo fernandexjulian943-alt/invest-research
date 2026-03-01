@@ -3,7 +3,7 @@ from pathlib import Path
 
 from invest_research.config import get_settings
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 MIGRATIONS = {
     1: [
@@ -87,6 +87,16 @@ MIGRATIONS = {
         CREATE INDEX IF NOT EXISTS idx_reports_framework ON reports(framework_id);
         """,
     ],
+    2: [
+        """
+        ALTER TABLE frameworks ADD COLUMN is_active INTEGER DEFAULT 1;
+        """,
+    ],
+    3: [
+        """
+        ALTER TABLE reports ADD COLUMN changes_from_previous TEXT DEFAULT '';
+        """,
+    ],
 }
 
 
@@ -95,7 +105,7 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
         settings = get_settings()
         settings.ensure_dirs()
         db_path = settings.db_path
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
