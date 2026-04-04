@@ -1,5 +1,6 @@
 import logging
 
+from invest_research.services.akshare_utils import call_akshare, AKShareError
 from invest_research.services.market_utils import detect_market, normalize_stock_code
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,21 @@ KEY_INDICATORS = {
     "CURRENCY": "货币",
 }
 
+# A 股备用源（财报摘要）的关键指标
+KEY_INDICATORS_ABSTRACT = {
+    "报告日期": "报告期",
+    "每股收益": "每股收益",
+    "每股净资产": "每股净资产",
+    "净资产收益率": "净资产收益率",
+    "营业总收入": "营业总收入",
+    "归属净利润": "归母净利润",
+    "营业总收入同比增长": "营收同比增长",
+    "归属净利润同比增长": "净利润同比增长",
+    "毛利率": "毛利率",
+    "净利率": "净利率",
+    "负债率": "资产负债率",
+}
+
 # 内部字段，不展示给用户
 EXCLUDE_COLUMNS = {
     "SECUCODE", "SECURITY_CODE", "SECURITY_NAME_ABBR", "ORG_CODE",
@@ -74,49 +90,127 @@ class FinancialDataService:
             else:
                 logger.warning("无法识别股票代码市场类型: %s", stock_code)
                 return ""
+        except AKShareError as e:
+            logger.warning("获取财务数据失败 [%s]: %s", stock_code, e.message)
+            return f"财报数据获取失败: {e.message}"
         except Exception as exc:
             logger.warning("获取财务数据失败 [%s]: %s", stock_code, exc, exc_info=True)
-            return ""
+            return f"财报数据获取失败: {exc}"
 
     def _fetch_a_share(self, ak, stock_code: str) -> str:
+        """A 股财报：主源 stock_financial_analysis_indicator_em，失败则切备用源。"""
         code = stock_code.split(".")[0]
-        df = ak.stock_financial_analysis_indicator_em(
-            symbol=code, indicator="按报告期"
-        )
-        if df is None or df.empty:
-            return ""
-        df = df.head(4)
-        return self._format_dataframe(df, f"A股财务指标 ({stock_code})")
+
+        # 主数据源
+        try:
+            df = call_akshare(
+                ak.stock_financial_analysis_indicator_em,
+                symbol=code, indicator="按报告期",
+                timeout=15, retries=1,
+            )
+            if df is not None and not df.empty:
+                return self._format_dataframe(df.head(4), f"A股财务指标 ({stock_code})")
+        except (AKShareError, TypeError) as e:
+            logger.warning("A股主源获取失败 [%s]: %s，尝试备用源", stock_code, e)
+
+        # 备用数据源：stock_financial_abstract（转置格式，更稳定）
+        try:
+            df = call_akshare(
+                ak.stock_financial_abstract,
+                symbol=code,
+                timeout=15, retries=1,
+            )
+            if df is not None and not df.empty:
+                logger.info("A股备用源获取成功 [%s]", stock_code)
+                return self._format_abstract(df, f"A股财务摘要 ({stock_code})")
+        except (AKShareError, TypeError) as e:
+            logger.warning("A股备用源也失败 [%s]: %s", stock_code, e)
+
+        return f"A股财报数据暂时无法获取（{stock_code}），数据源可能限制访问"
 
     def _fetch_us_stock(self, ak, stock_code: str) -> str:
         code = stock_code.split(".")[0]
-        df = ak.stock_financial_us_analysis_indicator_em(
-            symbol=code, indicator="年报"
-        )
+        try:
+            df = call_akshare(
+                ak.stock_financial_us_analysis_indicator_em,
+                symbol=code, indicator="单季报",
+                timeout=15, retries=1,
+            )
+        except AKShareError as e:
+            return f"美股财报数据获取失败（{stock_code}）: {e.message}"
+
         if df is None or df.empty:
-            return ""
-        df = df.head(2)
-        return self._format_dataframe(df, f"美股财务指标 ({stock_code})")
+            return f"未找到美股财报数据（{stock_code}）"
+        return self._format_dataframe(df.head(4), f"美股财务指标 ({stock_code})")
 
     def _fetch_hk_stock(self, ak, stock_code: str) -> str:
         code = stock_code.split(".")[0]
-        df = ak.stock_financial_hk_analysis_indicator_em(
-            symbol=code, indicator="年度"
-        )
+        try:
+            df = call_akshare(
+                ak.stock_financial_hk_analysis_indicator_em,
+                symbol=code, indicator="报告期",
+                timeout=15, retries=1,
+            )
+        except AKShareError as e:
+            return f"港股财报数据获取失败（{stock_code}）: {e.message}"
+
         if df is None or df.empty:
-            return ""
-        df = df.head(2)
-        return self._format_dataframe(df, f"港股财务指标 ({stock_code})")
+            return f"未找到港股财报数据（{stock_code}）"
+        return self._format_dataframe(df.head(4), f"港股财务指标 ({stock_code})")
+
+    # 备用源关注的指标行
+    _ABSTRACT_INDICATORS = [
+        "归母净利润", "营业总收入", "基本每股收益", "每股净资产",
+        "净资产收益率(ROE)", "总资产报酬率(ROA)", "毛利率", "销售净利率",
+        "资产负债率",
+    ]
 
     @staticmethod
-    def _format_dataframe(df, title: str) -> str:
+    def _format_abstract(df, title: str) -> str:
+        """格式化转置格式的财报摘要（行=指标，列=日期）。"""
+        # 取最近 4 个报告期列
+        date_cols = [c for c in df.columns if c not in ("选项", "指标")]
+        date_cols = date_cols[:4]
+
+        lines = [title, "=" * len(title)]
+
+        for col in date_cols:
+            # 格式化日期 20250930 -> 2025-09-30
+            d = col
+            if len(d) == 8:
+                d = f"{col[:4]}-{col[4:6]}-{col[6:]}"
+            lines.append(f"\n📊 {d}")
+            lines.append("-" * 30)
+
+            seen = set()
+            for _, row in df.iterrows():
+                indicator = row.get("指标", "")
+                if indicator not in FinancialDataService._ABSTRACT_INDICATORS:
+                    continue
+                if indicator in seen:
+                    continue
+                val = row.get(col)
+                if val is None or str(val).strip() in ("", "nan", "None"):
+                    continue
+                seen.add(indicator)
+                formatted_val = _format_value(indicator, val)
+                lines.append(f"  {indicator}: {formatted_val}")
+
+        summary = "\n".join(lines)
+        if len(summary) > MAX_SUMMARY_LENGTH:
+            summary = summary[:MAX_SUMMARY_LENGTH] + "\n..."
+        return summary
+
+    @staticmethod
+    def _format_dataframe(df, title: str, key_indicators: dict | None = None) -> str:
         """将 DataFrame 格式化为结构化文本摘要。"""
+        indicators = key_indicators or KEY_INDICATORS
         lines = [title, "=" * len(title)]
 
         for idx, (_, row) in enumerate(df.iterrows()):
             # 尝试确定报告期标题
             period_label = ""
-            for col in ("报告期", "REPORT_DATE", "DATE_TYPE"):
+            for col in ("报告期", "报告日期", "REPORT_DATE", "DATE_TYPE"):
                 if col in df.columns:
                     val = row[col]
                     if val is not None and str(val).strip():
@@ -135,7 +229,7 @@ class FinancialDataService:
                 if val is None or str(val).strip() == "":
                     continue
 
-                display_name = KEY_INDICATORS.get(col, col)
+                display_name = indicators.get(col, col)
                 formatted_val = _format_value(col, val)
                 lines.append(f"  {display_name}: {formatted_val}")
 

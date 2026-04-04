@@ -1,12 +1,13 @@
 // OpenClaw 插件 — AI 投研分析系统工具集
 //
 // 使用前请将 API_BASE 改为你的实际服务地址。
-// 注册了 5 个工具：
-//   1. stock_quote       — 实时股票报价
-//   2. stock_history     — 历史价格查询
-//   3. stock_financial   — 公司财报研究
-//   4. research_reports  — 调研报告查询
-//   5. tracked_stocks    — 关注股票列表
+// 注册了 6 个工具：
+//   1. stock_quote          — 实时股票报价
+//   2. stock_history        — 历史价格查询
+//   3. stock_financial      — 公司财报研究
+//   4. research_reports     — 调研报告查询
+//   5. tracked_stocks       — 关注股票列表
+//   6. xueqiu_analysis      — 雪球大V观点
 
 const API_BASE = "http://localhost:8001";
 
@@ -244,7 +245,45 @@ export default function (api) {
     },
   });
 
-  // 5. 关注股票列表
+  // 5. 雪球大V观点
+  api.registerTool({
+    name: "xueqiu_analysis",
+    description:
+      "查看雪球社区大V对某只股票的讨论帖子，了解市场情绪和资深投资者观点。支持 A股(如 600519)、美股(如 MSFT)、港股(如 00700)。注意：首次调用需 15-20 秒。",
+    parameters: {
+      type: "object",
+      properties: {
+        code: {
+          type: "string",
+          description: "股票代码，如 600519(贵州茅台)、MSFT(微软)、00700(腾讯)",
+        },
+      },
+      required: ["code"],
+    },
+    async execute(_id, params) {
+      const data = await callAPI(`/api/stock/xueqiu-analysis?code=${encodeURIComponent(params.code)}`);
+      if (data.error) {
+        return { content: [{ type: "text", text: `查询失败: ${data.error}` }] };
+      }
+      if (!data.posts || !data.posts.length) {
+        return { content: [{ type: "text", text: "暂无雪球讨论帖子" }] };
+      }
+      const lines = [`雪球大V观点 — ${data.symbol} (${data.posts.length}条)`, ""];
+      data.posts.forEach((p, i) => {
+        const followers = p.followers >= 10000 ? (p.followers / 10000).toFixed(1) + "万" : p.followers;
+        const interact = [];
+        if (p.likes) interact.push(`${p.likes}赞`);
+        if (p.comments) interact.push(`${p.comments}评论`);
+        lines.push(`${i + 1}. [${p.user}] ${followers}粉丝 ${interact.join(" ")} ${p.time}`);
+        lines.push(`   ${p.title}`);
+        if (p.url) lines.push(`   ${p.url}`);
+        lines.push("");
+      });
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    },
+  });
+
+  // 6. 关注股票列表
   api.registerTool({
     name: "tracked_stocks",
     description:

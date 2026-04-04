@@ -6,10 +6,19 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    # AI 后端切换：deepseek / anthropic
+    ai_provider: str = "deepseek"
+
     anthropic_api_key: str = ""
     anthropic_base_url: str = ""
     newsapi_api_key: str = ""
     tavily_api_key: str = ""
+
+    # DeepSeek 配置
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_model_heavy: str = "deepseek-reasoner"
+    deepseek_model_light: str = "deepseek-chat"
 
     # Claude 模型配置
     claude_model_heavy: str = "claude-opus-4-6"

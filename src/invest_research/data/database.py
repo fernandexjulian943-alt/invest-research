@@ -3,7 +3,7 @@ from pathlib import Path
 
 from invest_research.config import get_settings
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 13
 
 MIGRATIONS = {
     1: [
@@ -95,6 +95,133 @@ MIGRATIONS = {
     3: [
         """
         ALTER TABLE reports ADD COLUMN changes_from_previous TEXT DEFAULT '';
+        """,
+    ],
+    4: [
+        """
+        ALTER TABLE frameworks ADD COLUMN financial_summary TEXT DEFAULT '';
+        """,
+        """
+        ALTER TABLE frameworks ADD COLUMN financial_fetched_at TIMESTAMP DEFAULT NULL;
+        """,
+    ],
+    5: [
+        """
+        ALTER TABLE frameworks ADD COLUMN company_type TEXT DEFAULT '';
+        """,
+        """
+        ALTER TABLE frameworks ADD COLUMN analysis_dimensions TEXT DEFAULT '{}';
+        """,
+    ],
+    6: [
+        """
+        ALTER TABLE frameworks ADD COLUMN investment_strategy TEXT DEFAULT '';
+        """,
+    ],
+    7: [
+        """
+        ALTER TABLE reports ADD COLUMN signal_summary TEXT DEFAULT '';
+        """,
+    ],
+    8: [
+        """
+        CREATE TABLE IF NOT EXISTS reflections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            framework_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            report_id INTEGER,
+            situation TEXT DEFAULT '',
+            prediction TEXT DEFAULT '',
+            actual_outcome TEXT DEFAULT '',
+            was_correct INTEGER DEFAULT 0,
+            reflection TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (framework_id) REFERENCES frameworks(id)
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_reflections_framework_role ON reflections(framework_id, role);
+        """,
+    ],
+    9: [
+        """
+        ALTER TABLE reports ADD COLUMN debate_detail TEXT DEFAULT '{}';
+        """,
+        """
+        ALTER TABLE reports ADD COLUMN technical_detail TEXT DEFAULT '{}';
+        """,
+    ],
+    10: [
+        """
+        ALTER TABLE reports ADD COLUMN financial_detail TEXT DEFAULT '';
+        """,
+        """
+        ALTER TABLE reports ADD COLUMN news_detail TEXT DEFAULT '';
+        """,
+        """
+        ALTER TABLE reports ADD COLUMN xueqiu_detail TEXT DEFAULT '';
+        """,
+    ],
+    11: [
+        """
+        ALTER TABLE reports ADD COLUMN analyst_signals TEXT DEFAULT '';
+        """,
+    ],
+    12: [
+        """
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY,
+            framework_id INTEGER NOT NULL,
+            model_provider TEXT DEFAULT 'deepseek',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (framework_id) REFERENCES frameworks(id)
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            specialist TEXT DEFAULT '',
+            data_refs TEXT DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_framework ON chat_sessions(framework_id);
+        """,
+    ],
+    13: [
+        # chat_sessions: framework_id 改为可选（支持市场级对话）
+        # SQLite 不支持 ALTER COLUMN，需要重建表
+        """
+        CREATE TABLE IF NOT EXISTS chat_sessions_v2 (
+            id TEXT PRIMARY KEY,
+            framework_id INTEGER DEFAULT NULL,
+            model_provider TEXT DEFAULT 'deepseek',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (framework_id) REFERENCES frameworks(id)
+        );
+        """,
+        """
+        INSERT OR IGNORE INTO chat_sessions_v2 (id, framework_id, model_provider, created_at, updated_at)
+        SELECT id, framework_id, model_provider, created_at, updated_at FROM chat_sessions;
+        """,
+        """
+        DROP TABLE IF EXISTS chat_sessions;
+        """,
+        """
+        ALTER TABLE chat_sessions_v2 RENAME TO chat_sessions;
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_framework ON chat_sessions(framework_id);
         """,
     ],
 }

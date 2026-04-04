@@ -9,6 +9,7 @@ description = "AI 驱动的投资研究分析系统"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40.0",
+    "openai>=1.0",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "akshare>=1.14.0",

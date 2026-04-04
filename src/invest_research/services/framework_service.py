@@ -78,6 +78,27 @@ class FrameworkService:
             return framework
         raise ValueError(f"无法为 {company_name} 自动生成分析框架")
 
+    def build_framework_pro(self, company_name: str, investment_strategy: str = "") -> AnalysisFramework:
+        """生成专业级分析框架（含行业适配的 analysis_dimensions），不存库。"""
+        strategy_hint = ""
+        if investment_strategy and investment_strategy != "balanced":
+            strategy_hint = f"\n投资策略类型: {investment_strategy}\n请按照该策略的叠加规则生成 analysis_dimensions，必须包含 strategy_specific 维度。"
+        messages = [
+            {"role": "user", "content": f"请为 {company_name} 生成专业级投资分析框架。{strategy_hint}"}
+        ]
+        response = self.claude.chat(
+            messages=messages,
+            prompt_name="framework_builder_pro",
+            model=self.claude.settings.claude_model_heavy,
+        )
+        logger.debug(f"框架原始响应 (前500字): {response[:500]}")
+        framework = self._parse_framework(response)
+        if framework:
+            framework.investment_strategy = investment_strategy or "balanced"
+            return framework
+        logger.error(f"框架解析失败，原始响应 (前1000字): {response[:1000]}")
+        raise ValueError(f"无法为 {company_name} 生成专业分析框架")
+
     @staticmethod
     def _parse_framework(text: str) -> AnalysisFramework | None:
         try:
