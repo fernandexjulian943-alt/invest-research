@@ -626,7 +626,7 @@ body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-seri
       </div>
       <!-- 新对话面板（默认隐藏，点击+新对话展开） -->
       <div id="chat-new-panel" style="display:none;">
-        <input type="text" id="chat-stock-search" placeholder="搜索股票..." oninput="filterChatStockList()" style="width:calc(100% - 24px);margin:8px 12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;outline:none;">
+        <input type="text" id="chat-stock-search" placeholder="搜索股票..." oninput="filterChatStockList()" onkeydown="if((event.key==='Enter'||event.keyCode===13)&&!event.isComposing&&!window._isComposing)selectFirstChatStock()" style="width:calc(100% - 24px);margin:8px 12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;outline:none;">
         <div id="chat-all-stocks"></div>
       </div>
       <!-- 最近对话股票列表 -->
@@ -660,7 +660,7 @@ body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-seri
         </div>
       </div>
       <div class="chat-send-bar" id="chat-send-bar" style="display:none;">
-        <input type="text" id="chat-msg-input" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!window._isComposing)sendChatMsg()">
+        <input type="text" id="chat-msg-input" placeholder="输入你的问题..." onkeydown="if((event.key==='Enter'||event.keyCode===13)&&!event.shiftKey&&!event.isComposing&&!window._isComposing)sendChatMsg()">
         <button id="chat-send-btn" onclick="sendChatMsg()">发送</button>
       </div>
     </div>
@@ -1203,6 +1203,15 @@ document.getElementById('research-modal-overlay').addEventListener('click', (e) 
   if (e.target === e.currentTarget) closeAddStockModal();
 });
 
+async function openReport(reportId) {
+  // 关闭弹窗
+  closeAddStockModal();
+  // 切换到历史报告 tab
+  document.querySelector('[data-tab=reports]').click();
+  // 加载报告详情
+  await loadReportDetail(reportId);
+}
+
 const toggle = document.getElementById('weekly-toggle');
 toggle.addEventListener('click', () => {
   autoWeekly = !autoWeekly;
@@ -1280,6 +1289,7 @@ function listenSSE(taskId) {
       document.getElementById('start-btn').disabled = false;
       // 刷新关注股票列表
       loadFrameworks();
+      loadReports();
       es.close();
       return;
     }
@@ -2208,6 +2218,14 @@ function filterChatStockList() {
     (fw.industry || '').toLowerCase().includes(keyword)
   );
   renderAllStocksList(filtered);
+}
+
+function selectFirstChatStock() {
+  const firstItem = document.querySelector('#chat-all-stocks .chat-stock-item');
+  if (firstItem) {
+    const fwId = parseInt(firstItem.dataset.fwid);
+    if (fwId) startNewChat(fwId);
+  }
 }
 
 async function startNewChat(fwId) {

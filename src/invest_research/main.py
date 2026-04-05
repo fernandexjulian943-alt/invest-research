@@ -8,7 +8,7 @@ from rich.console import Console
 
 from invest_research.config import get_settings
 from invest_research.data.analysis_repo import AnalysisRepo
-from invest_research.data.database import init_db
+from invest_research.data.database import backup_db, init_db
 from invest_research.data.framework_repo import FrameworkRepo
 from invest_research.data.news_repo import NewsRepo
 from invest_research.data.report_repo import ReportRepo
@@ -180,6 +180,12 @@ def serve(host: str, port: int):
     from invest_research.scheduler.jobs import create_scheduler
 
     settings = get_settings()
+
+    # 启动前自动备份数据库
+    backup_path = backup_db()
+    if backup_path:
+        cli_ui.display_info(f"数据库已备份: {backup_path}")
+
     init_db()
 
     scheduler = create_scheduler()

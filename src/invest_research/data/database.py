@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from invest_research.config import get_settings
@@ -252,10 +253,59 @@ def migrate(conn: sqlite3.Connection) -> None:
     current = get_current_version(conn)
     for version in range(current + 1, SCHEMA_VERSION + 1):
         if version in MIGRATIONS:
+            # 涉及表重建的迁移需要关闭 FK 检查（DROP TABLE 会触发 FK 约束）
+            if version in _FK_OFF_MIGRATIONS:
+                conn.execute("PRAGMA foreign_keys=OFF")
             for sql in MIGRATIONS[version]:
                 conn.execute(sql)
+            if version in _FK_OFF_MIGRATIONS:
+                conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (version,))
     conn.commit()
+
+
+# 需要关闭 FK 检查的迁移版本（涉及 DROP TABLE + RENAME 重建）
+_FK_OFF_MIGRATIONS = {13}
+
+
+def backup_db(db_path: Path | None = None, max_backups: int = 10) -> str | None:
+    """服务启动时自动备份数据库。返回备份文件路径，跳过则返回 None。"""
+    if db_path is None:
+        settings = get_settings()
+        db_path = settings.db_path
+
+    if not db_path.exists():
+        return None
+
+    # 检查是否空库（frameworks 表 0 条），空库不备份
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        count = conn.execute("SELECT COUNT(*) FROM frameworks").fetchone()[0]
+        conn.close()
+        if count == 0:
+            return None
+    except Exception:
+        return None
+
+    backup_dir = db_path.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = backup_dir / f"invest_research_{timestamp}.db"
+
+    # SQLite 在线备份（WAL 模式安全）
+    src = sqlite3.connect(str(db_path), timeout=5)
+    dst = sqlite3.connect(str(backup_path))
+    src.backup(dst)
+    dst.close()
+    src.close()
+
+    # 清理旧备份，保留最近 max_backups 个
+    backups = sorted(backup_dir.glob("invest_research_*.db"))
+    for old in backups[:-max_backups]:
+        old.unlink()
+
+    return str(backup_path)
 
 
 def init_db(db_path: Path | None = None) -> sqlite3.Connection:
