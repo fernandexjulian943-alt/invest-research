@@ -69,6 +69,12 @@ class ChatRefreshDataRequest(BaseModel):
     action: str  # "refresh_financial" | "regenerate_report"
 
 
+@app.get("/api/health")
+async def health_check():
+    """轻量健康检查，不触发任何外部API调用。"""
+    return {"status": "ok"}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     index_path = STATIC_DIR / "index.html"

@@ -6,7 +6,7 @@ LOCK_FILE="/tmp/invest-research-running.lock"
 if [ -f "$LOCK_FILE" ]; then
     echo "$(date): 投研任务运行中，跳过健康检查" >> /var/log/invest-research-health.log
 else
-    resp=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://localhost:8001/api/stock/quote?code=000001")
+    resp=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:8001/api/health")
     if [ "$resp" != "200" ]; then
         echo "$(date): 健康检查失败(HTTP $resp)，重启服务" >> /var/log/invest-research-health.log
         systemctl restart invest-research
